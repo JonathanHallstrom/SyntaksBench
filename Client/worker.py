@@ -1310,6 +1310,8 @@ def run_and_parse_runner(config, command, runner_idx, results_queue, abort_flag)
     }
 
     latest_results: str | None = None
+    old_penta = [0, 0, 0, 0, 0]
+    old_wdl = [0, 0, 0]
     while True:
         # Read each line of output until the pipe closes and we get "" back
         line: str = runner.stdout.readline()
@@ -1318,6 +1320,18 @@ def run_and_parse_runner(config, command, runner_idx, results_queue, abort_flag)
         line = line.strip().decode("ascii")
         if line.startswith("Penta(0-2)"):
             latest_results = line
+            pentanomial_results: str = latest_results.split(":")[-1]
+            pentanomial_results = pentanomial_results.strip()[1:-1]
+
+            penta = [int(value) for value in pentanomial_results.split(",")]
+            results["pentanomial"] = [new - old for new, old in zip(penta, old_penta)]
+            old_penta = penta
+        if line.startswith("WDL"):
+            wdl_results: str = line.split(":", 1)[-1]
+
+            wdl = [int(value.split(":")[-1]) for value in wdl_results.split(",")][::-1]
+            results["trinomial"] = [new - old for new, old in zip(wdl, old_wdl)]
+            old_wdl = wdl
 
         if abort_flag.is_set():
             return
@@ -1326,7 +1340,7 @@ def run_and_parse_runner(config, command, runner_idx, results_queue, abort_flag)
         print("[#%d] %s" % (runner_idx, line))
 
         # Add to the results queue every time we have a game-pair finished
-        if any(results["pentanomial"]):
+        if any(results["pentanomial"]) or any(results["trinomial"]):
             # Place the results into the Queue, and be sure to copy the lists
             results_queue.put(
                 {
@@ -1348,20 +1362,6 @@ def run_and_parse_runner(config, command, runner_idx, results_queue, abort_flag)
 
     if latest_results is None:
         print("something bad happened")
-        return
-    pentanomial_results: str = latest_results.split(":")[-1]
-    pentanomial_results = pentanomial_results.strip()[1:-1]
-    (ll, ld, dd, wd, ww) = [int(value) for value in pentanomial_results.split(",")]
-    results_queue.put(
-        {
-            "trinomial": [ll * 2 + ld, ld + dd * 2 + wd, ww * 2 + wd],
-            "pentanomial": [ll, ld, dd, wd, ww],
-            "crashes": results["crashes"],
-            "timelosses": results["timelosses"],
-            "illegals": results["illegals"],
-            "runner_idx": runner_idx,
-        }
-    )
 
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
